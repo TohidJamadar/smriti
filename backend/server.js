@@ -5,7 +5,9 @@ import connectDB from './config/db.js';
 import { testDatabase } from './data/testDatabase.js';
 import TestResult from './models/TestResult.js';
 import protect from './middleware/authMiddleware.js';
-import authRoutes from './routes/authRoutes.js';
+import authRoutes  from './routes/authRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import userRoutes  from './routes/userRoutes.js';
 
 dotenv.config();
 connectDB();
@@ -13,15 +15,35 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// Allow requests from the Vite dev server and any deployed frontend
+app.use(cors({
+    origin: [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        process.env.FRONTEND_URL,  // set this in .env for production
+    ].filter(Boolean),
+    credentials: true,
+}));
 app.use(express.json());
 
 // ─── Auth Routes ────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
+app.use('/api/auth',  authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user',  userRoutes);
 
-// ─── GET /api/tests — static test catalogue ─────────────────────────────────
+// ─── GET /api/tests — randomised question sets ──────────────────────────────
+// Each module has up to 5 question sets; we pick one at random per request so
+// that retakes always present a different set to the user.
 app.get('/api/tests', (req, res) => {
-    res.json(testDatabase);
+    const randomised = testDatabase.map(module => {
+        const sets = module.questionSets;
+        if (sets && sets.length > 0) {
+            const idx = Math.floor(Math.random() * sets.length);
+            return { ...module, questions: sets[idx] };
+        }
+        return module;
+    });
+    res.json(randomised);
 });
 
 // ─── GET /api/tests/results — fetch results for logged-in user ────────────
