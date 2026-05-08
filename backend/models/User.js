@@ -19,6 +19,14 @@ const userSchema = new mongoose.Schema({
         enum: ['user', 'admin'],
         default: 'user',
     },
+    msg: [
+        {
+            text: { type: String, required: true },
+            createdAt: { type: Date, default: Date.now },
+            from: { type: String, default: 'admin' },
+            checked: { type: Boolean, default: false }
+        }
+    ]
 }, {
     timestamps: true
 });

@@ -237,11 +237,12 @@ const RadarChart = ({ scores }) => {
   );
 };
 
-// ─── Admin Alerts / Suggestions Panel ───────────────────────────────────────
-const AdminAlerts = ({ userToken }) => {
-  const [messages, setMessages]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
+// ─── Notification Bell Panel ────────────────────────────────────────────────
+const NotificationBell = ({ userToken }) => {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
+  const bellRef = React.useRef(null);
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
   const fetchMessages = useCallback(() => {
@@ -255,86 +256,116 @@ const AdminAlerts = ({ userToken }) => {
 
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
 
-  const markRead = async (id) => {
-    try {
-      await fetch(`${base}/api/user/messages/${id}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${userToken}`, 'Content-Type': 'application/json' }
-      });
-      setMessages(prev => prev.map(m => m._id === id ? { ...m, isRead: true } : m));
-    } catch { /* noop */ }
-  };
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (isOpen && bellRef.current && !bellRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    const handleEsc = (e) => {
+      if (isOpen && e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [isOpen]);
 
-  const unreadCount = messages.filter(m => !m.isRead).length;
+  const unreadCount = messages.filter(m => !m.checked).length;
+
+  const handleOpen = async () => {
+    const nextOpenState = !isOpen;
+    setIsOpen(nextOpenState);
+    
+    // Auto mark as read immediately if there are unread messages
+    if (nextOpenState && unreadCount > 0) {
+      // Optimistic UI update
+      setMessages(prev => prev.map(m => ({ ...m, checked: true })));
+      
+      try {
+        await fetch(`${base}/api/user/messages/read-all`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${userToken}`, 'Content-Type': 'application/json' }
+        });
+      } catch { /* noop */ }
+    }
+  };
 
   if (!loading && messages.length === 0) return null;
 
   return (
-    <motion.div
-      className="mb-8"
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45 }}
-    >
-      <button onClick={() => setCollapsed(c => !c)} className="flex items-center gap-2.5 mb-3 w-full text-left group">
-        <div className="relative">
-          {unreadCount > 0 ? <BellDot size={17} className="text-amber-400" /> : <Bell size={17} className="text-slate-500" />}
-          {unreadCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 text-black text-[9px] font-black flex items-center justify-center" style={{ lineHeight: 1 }}>
+    <div className="relative z-50" ref={bellRef}>
+      {/* Bell Button */}
+      <button 
+        onClick={handleOpen}
+        className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+          isOpen ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'
+        } ${unreadCount > 0 ? 'border border-amber-400/30' : 'border border-white/10'}`}
+      >
+        <Bell size={20} className={unreadCount > 0 ? "text-amber-400" : "text-slate-400"} />
+        
+        {/* Pulsing Unread Badge */}
+        {unreadCount > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-5 w-5 bg-amber-400 items-center justify-center text-[10px] font-black text-amber-950">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
-          )}
-        </div>
-        <h2 className="text-sm font-bold text-white uppercase tracking-widest">Suggestions from Admin</h2>
-        {unreadCount > 0 && <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/25 px-2 py-0.5 rounded-full">{unreadCount} new</span>}
-        <span className="ml-auto text-[10px] text-slate-600 group-hover:text-slate-400 transition-colors">{collapsed ? 'Show ▾' : 'Hide ▴'}</span>
+          </span>
+        )}
       </button>
 
-      {!collapsed && (
-        <div className="space-y-3">
-          {loading && (
-            <div className="panel rounded-2xl p-5 text-center">
-              <div className="w-5 h-5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin mx-auto" />
-            </div>
-          )}
-
-          {!loading && messages.map((msg, i) => (
-            <motion.div key={msg._id}
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-              className={`panel rounded-2xl p-5 relative overflow-hidden transition-all ${msg.isRead ? 'border-white/07 opacity-80' : 'border-amber-400/25'}`}
-              style={!msg.isRead ? { boxShadow: '0 0 0 1px rgba(251,191,36,0.15), 0 4px 24px rgba(0,0,0,0.5)' } : {}}
-            >
-              {!msg.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-gradient-to-b from-amber-400 to-orange-500" />}
-              
-              <div className="flex items-start gap-3 pl-1">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${msg.isRead ? 'bg-white/05 border border-white/08' : 'bg-amber-400/10 border border-amber-400/25'}`}>
-                  <MessageSquare size={16} className={msg.isRead ? 'text-slate-500' : 'text-amber-400'} />
-                </div>
-                <div className="flex-grow min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <p className={`font-bold text-sm leading-snug ${msg.isRead ? 'text-slate-300' : 'text-white'}`}>{msg.subject}</p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {!msg.isRead && <span className="text-[9px] font-black text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full uppercase tracking-wider">New</span>}
-                      <span className="text-[10px] text-slate-600">{new Date(msg.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    </div>
-                  </div>
-                  <p className={`text-sm leading-relaxed mb-3 ${msg.isRead ? 'text-slate-500' : 'text-slate-300'}`}>{msg.body}</p>
-                  <div className="flex items-center gap-3">
-                    {msg.isRead ? (
-                      <span className="flex items-center gap-1 text-[11px] text-emerald-500"><CheckCircle2 size={11} /> Read</span>
-                    ) : (
-                      <button onClick={() => markRead(msg._id)} className="flex items-center gap-1 text-[11px] font-semibold text-amber-400 hover:text-amber-300 bg-amber-400/08 hover:bg-amber-400/15 px-2.5 py-1 rounded-lg transition-colors">
-                        <CheckCircle2 size={11} /> Mark as read
-                      </button>
-                    )}
-                  </div>
-                </div>
+      {/* Dropdown Panel */}
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="absolute right-0 top-[calc(100%+12px)] w-80 sm:w-96 panel rounded-2xl border border-white/10 shadow-2xl z-50 overflow-hidden"
+          style={{ boxShadow: '0 20px 40px -10px rgba(0,0,0,0.8)' }}
+        >
+          <div className="bg-white/5 border-b border-white/10 px-4 py-3 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white tracking-widest uppercase flex items-center gap-2">
+              <MessageSquare size={14} className="text-sm-violet" />
+              Clinical Suggestions
+            </h3>
+          </div>
+          
+          <div className="max-h-[350px] overflow-y-auto custom-scrollbar p-3 space-y-2">
+            {loading ? (
+              <div className="flex justify-center p-4">
+                <div className="w-5 h-5 border-2 border-sm-violet/30 border-t-sm-violet rounded-full animate-spin" />
               </div>
-            </motion.div>
-          ))}
-        </div>
+            ) : (
+              messages.map((msg, i) => (
+                <div key={msg._id || i}
+                  className={`p-3 rounded-xl relative transition-all ${
+                    msg.checked 
+                      ? 'bg-white/5 border border-white/10 opacity-70' 
+                      : 'bg-amber-400/5 border border-amber-400/30'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-1.5">
+                    <span className={`text-[10px] font-bold uppercase tracking-widest ${msg.checked ? 'text-slate-500' : 'text-amber-400'}`}>
+                      {msg.checked ? 'Read' : 'New'}
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {new Date(msg.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </div>
+                  <p className={`text-sm leading-relaxed ${msg.checked ? 'text-slate-400' : 'text-slate-200 font-medium'}`}>
+                    {msg.text}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </motion.div>
       )}
-    </motion.div>
+    </div>
   );
 };
 
@@ -392,8 +423,8 @@ const DashboardPage = () => {
   if (!results.length) return (
     <div className="min-h-screen pt-28 flex flex-col items-center justify-start px-6">
       <DashStyle />
-      <div className="w-full max-w-2xl mt-4 mb-6">
-        <AdminAlerts userToken={user?.token} />
+      <div className="w-full max-w-2xl mt-4 mb-6 flex justify-end">
+        <NotificationBell userToken={user?.token} />
       </div>
       <motion.div initial="hidden" animate="visible" variants={staggerContainer(0.1)} className="text-center max-w-md mt-10">
         <motion.div variants={fadeUp} className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-sm-violet/10 border border-sm-violet/20 mb-8" style={{ boxShadow: '0 0 24px rgba(139,92,246,0.2)' }}>
@@ -415,20 +446,20 @@ const DashboardPage = () => {
       <DashStyle />
       <div className="max-w-7xl mx-auto">
 
-        {/* Page title */}
-        <motion.div className="mb-6" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-sm-lime animate-blink" />
-            <span className="font-mono text-[11px] text-sm-lime tracking-widest uppercase">Command Center</span>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">
-            {user?.name?.split(' ')[0] ?? 'User'}
-            <span className="text-gradient-violet"> · Dashboard</span>
-          </h1>
-        </motion.div>
-
-        {/* Admin Alerts */}
-        <AdminAlerts userToken={user?.token} />
+        {/* Header row with Notification Bell */}
+        <div className="flex justify-between items-start mb-6 relative z-50">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-sm-lime animate-blink" />
+              <span className="font-mono text-[11px] text-sm-lime tracking-widest uppercase">Command Center</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight">
+              {user?.name?.split(' ')[0] ?? 'User'}
+              <span className="text-gradient-violet"> · Dashboard</span>
+            </h1>
+          </motion.div>
+          <NotificationBell userToken={user?.token} />
+        </div>
 
         {/* Stat strip — raw numbers, no boxes */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>

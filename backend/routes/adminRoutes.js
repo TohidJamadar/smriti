@@ -181,34 +181,26 @@ router.get('/users/:id/results', async (req, res) => {
     }
 });
 
-// ── POST /api/admin/messages — send message to user ──────────────────────────
-router.post('/messages', async (req, res) => {
+// ── POST /api/admin/send-message/:userId — send inline suggestion ────────────
+router.post('/send-message/:userId', async (req, res) => {
     try {
-        const { toUserId, subject, body } = req.body;
-        if (!toUserId || !subject || !body) {
-            return res.status(400).json({ message: 'toUserId, subject and body are required' });
-        }
-        const target = await User.findById(toUserId);
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ message: 'Message text is required' });
+
+        const target = await User.findById(req.params.userId);
         if (!target || target.role === 'admin') {
             return res.status(404).json({ message: 'User not found' });
         }
-        const msg = await AdminMessage.create({ toUserId, subject, body });
-        res.status(201).json({ message: 'Message sent', id: msg._id });
-    } catch (err) {
-        console.error('Admin /messages POST error:', err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
 
-// ── GET /api/admin/messages — list all sent messages ─────────────────────────
-router.get('/messages', async (req, res) => {
-    try {
-        const msgs = await AdminMessage.find()
-            .sort({ createdAt: -1 })
-            .populate('toUserId', 'name email')
-            .lean();
-        res.json(msgs);
+        const newMsg = { text, from: 'admin', checked: false };
+        
+        target.msg.push(newMsg);
+        await target.save();
+
+        // Return the newly added message (which now has an _id and createdAt)
+        res.status(201).json(target.msg[target.msg.length - 1]);
     } catch (err) {
+        console.error('Admin /send-message POST error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });

@@ -59,6 +59,78 @@ const StatCard = ({ icon: Icon, label, value, color, sub }) => (
   </div>
 );
 
+// ── Inline Message Form ────────────────────────────────────────────────────────
+const InlineMessageForm = ({ userId, msgHistory = [] }) => {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState('idle'); // idle, loading, success
+  const [history, setHistory] = useState([...msgHistory].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+
+  const handleSend = async () => {
+    if (!text.trim()) return;
+    setStatus('loading');
+    try {
+      const res = await fetch(`${BASE}/api/admin/send-message/${userId}`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: JSON.stringify({ text })
+      });
+      if (res.ok) {
+        const newMsg = await res.json();
+        setHistory(prev => [newMsg, ...prev]);
+        setStatus('success');
+        setText('');
+        setTimeout(() => setStatus('idle'), 2000);
+      } else {
+        setStatus('idle');
+      }
+    } catch {
+      setStatus('idle');
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/5 space-y-3">
+      {history.length > 0 && (
+        <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+          {history.map(m => (
+            <div key={m._id} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-lg bg-white/[0.02]">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[9px] text-slate-500 whitespace-nowrap">{new Date(m.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                <span className="text-xs text-slate-300 truncate">{m.text}</span>
+              </div>
+              <div className="flex-shrink-0">
+                {m.checked ? (
+                  <span className="text-[9px] font-bold text-emerald-500/70 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">Read</span>
+                ) : (
+                  <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md border border-amber-400/20">Unread</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Type a clinical suggestion or encouragement..."
+          className="flex-grow bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500/50"
+          disabled={status === 'loading' || status === 'success'}
+        />
+        <button
+          onClick={handleSend}
+          disabled={!text.trim() || status === 'loading' || status === 'success'}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1 bg-violet-600 hover:bg-violet-500 text-white"
+        >
+          {status === 'loading' ? 'Sending...' : status === 'success' ? <><CheckCircle2 size={12} /> Sent</> : <><Send size={12} /> Send</>}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ── Tab: Users ─────────────────────────────────────────────────────────────────
 const UsersTab = ({ users, loading }) => {
   const [search, setSearch] = useState('');
@@ -142,6 +214,7 @@ const UsersTab = ({ users, loading }) => {
                   <div className="text-[10px] text-slate-600">overall</div>
                 </div>
               </div>
+              <InlineMessageForm userId={u._id} msgHistory={u.msg} />
             </div>
           ))}
           {!filtered.length && <div className="py-12 text-center text-slate-600 text-sm">No users found</div>}
@@ -258,121 +331,7 @@ const AnalyticsTab = ({ stats }) => {
   );
 };
 
-// ── Tab: Messages ──────────────────────────────────────────────────────────────
-const MessagesTab = ({ users }) => {
-  const [toUserId, setToUserId] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState('');
-  const [history, setHistory] = useState([]);
 
-  const SUGGESTIONS = [
-    'Try memory recall exercises daily for 10 minutes.',
-    'Practice pattern recognition tasks to improve spatial ability.',
-    'Your attention scores are showing improvement — keep it up!',
-    'Engage in daily conversation to strengthen language skills.',
-    'Simple math puzzles each morning can improve reasoning.',
-    'Regular physical activity supports overall cognitive health.',
-  ];
-
-  useEffect(() => {
-    fetch(`${BASE}/api/admin/messages`, { headers: authHeader() })
-      .then(r => r.json()).then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => { });
-  }, [sent]);
-
-  const handleSend = async () => {
-    if (!toUserId || !subject.trim() || !body.trim()) return;
-    setSending(true);
-    try {
-      const res = await fetch(`${BASE}/api/admin/messages`, {
-        method: 'POST', headers: authHeader(),
-        body: JSON.stringify({ toUserId, subject, body }),
-      });
-      if (res.ok) { setSent(Date.now().toString()); setSubject(''); setBody(''); setToUserId(''); }
-    } finally { setSending(false); }
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {/* Compose */}
-      <div className="panel rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Send size={15} className="text-violet-400" />
-          <h3 className="text-sm font-bold text-white uppercase tracking-widest">Compose Message</h3>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1 block">Recipient</label>
-          <select value={toUserId} onChange={e => setToUserId(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-400/50">
-            <option value="">Select user…</option>
-            {users.map(u => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1 block">Subject</label>
-          <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={120}
-            placeholder="e.g. Your weekly cognitive tip"
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-400/50" />
-        </div>
-
-        <div>
-          <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1 block">Message</label>
-          <textarea value={body} onChange={e => setBody(e.target.value)} rows={4} maxLength={1000}
-            placeholder="Write your message here…"
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-400/50 resize-none" />
-        </div>
-
-        {/* Quick suggestions */}
-        <div>
-          <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-2 block">Quick Templates</label>
-          <div className="flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => setBody(s)}
-                className="text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:border-violet-500/40 hover:text-white transition-colors text-left">
-                {s.slice(0, 35)}…
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button onClick={handleSend} disabled={sending || !toUserId || !subject || !body}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white font-semibold text-sm transition-colors">
-          <Send size={15} /> {sending ? 'Sending…' : 'Send Message'}
-        </button>
-        {sent && <p className="text-emerald-400 text-xs text-center flex items-center justify-center gap-1"><CheckCircle2 size={13} /> Message sent successfully</p>}
-      </div>
-
-      {/* History */}
-      <div className="panel rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <MessageSquare size={15} className="text-cyan-400" />
-          <h3 className="text-sm font-bold text-white uppercase tracking-widest">Sent Messages</h3>
-        </div>
-        <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
-          {history.map(m => (
-            <div key={m._id} className="p-3 rounded-xl bg-white/[0.03] border border-white/08">
-              <div className="flex justify-between items-start gap-2 mb-1">
-                <span className="text-xs font-semibold text-violet-400">{m.toUserId?.name ?? '—'}</span>
-                <span className="text-[10px] text-slate-600">{new Date(m.createdAt).toLocaleDateString()}</span>
-              </div>
-              <div className="text-xs font-medium text-white mb-0.5">{m.subject}</div>
-              <div className="text-xs text-slate-400 leading-relaxed">{m.body}</div>
-              <div className="mt-1.5">
-                {m.isRead
-                  ? <span className="text-[10px] text-emerald-500">✓ Read</span>
-                  : <span className="text-[10px] text-amber-400">● Unread</span>}
-              </div>
-            </div>
-          ))}
-          {!history.length && <p className="text-slate-600 text-sm text-center py-8">No messages sent yet</p>}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 const AdminPage = () => {
@@ -407,7 +366,6 @@ const AdminPage = () => {
     { id: 'users', label: 'Users', icon: Users },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-    { id: 'messages', label: 'Messages', icon: MessageSquare },
   ];
 
   return (
@@ -467,7 +425,7 @@ const AdminPage = () => {
           {tab === 'users' && <UsersTab users={users} loading={loading} />}
           {tab === 'leaderboard' && <LeaderboardTab period={period} setPeriod={setPeriod} />}
           {tab === 'analytics' && <AnalyticsTab stats={stats} />}
-          {tab === 'messages' && <MessagesTab users={users} />}
+
         </motion.div>
       </div>
     </div>
