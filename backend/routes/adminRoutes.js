@@ -39,7 +39,7 @@ function computeDomainScores(results) {
 // ── GET /api/admin/users ─────────────────────────────────────────────────────
 router.get('/users', async (req, res) => {
     try {
-        const users = await User.find({ role: 'user' }).select('-password').lean();
+        const users = await User.find({ role: { $ne: 'admin' } }).select('-password').lean();
         const allResults = await TestResult.find({
             userId: { $in: users.map(u => u._id) }
         }).lean();
@@ -92,7 +92,7 @@ router.get('/users', async (req, res) => {
 router.get('/leaderboard', async (req, res) => {
     try {
         const { period = 'all' } = req.query;
-        const users = await User.find({ role: 'user' }).select('-password').lean();
+        const users = await User.find({ role: { $ne: 'admin' } }).select('-password').lean();
 
         let dateFilter = {};
         if (period === 'week') {
@@ -141,14 +141,14 @@ router.get('/leaderboard', async (req, res) => {
 // ── GET /api/admin/stats ─────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
     try {
-        const totalUsers   = await User.countDocuments({ role: 'user' });
+        const totalUsers   = await User.countDocuments({ role: { $ne: 'admin' } });
         const totalTests   = await TestResult.countDocuments();
         const allResults   = await TestResult.find({ maxScore: { $gt: 0 } }).lean();
         const allPcts      = allResults.map(r => pct(r.finalScore, r.maxScore));
         const avgPlatform  = allPcts.length ? Math.round(allPcts.reduce((a, b) => a + b, 0) / allPcts.length) : 0;
 
         // Domain averages across all users
-        const users = await User.find({ role: 'user' }).select('_id').lean();
+        const users = await User.find({ role: { $ne: 'admin' } }).select('_id').lean();
         const resultsByUser = {};
         allResults.forEach(r => { (resultsByUser[r.userId.toString()] = resultsByUser[r.userId.toString()] || []).push(r); });
 

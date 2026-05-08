@@ -58,23 +58,36 @@ export const signupUser = async (req, res) => {
 export const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log(`\n[AUTH DEBUG] Login attempt for email: ${email}`);
 
         // Check for user email
         const user = await User.findOne({ email });
 
-        if (user && (await bcrypt.compare(password, user.password))) {
+        if (!user) {
+            console.log(`[AUTH DEBUG] User not found: ${email}`);
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+        console.log(`[AUTH DEBUG] User found: ${user.email}, Role: ${user.role}`);
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.log(`[AUTH DEBUG] Password match result: ${isMatch}`);
+
+        if (isMatch) {
+            const token = generateToken(user._id);
+            console.log(`[AUTH DEBUG] Login successful. Generated token.`);
             res.json({
                 _id: user.id,
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                token: generateToken(user._id),
+                token,
             });
         } else {
+            console.log(`[AUTH DEBUG] Password did not match for ${email}`);
             res.status(400).json({ message: 'Invalid credentials' });
         }
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('[AUTH DEBUG] Login error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 };

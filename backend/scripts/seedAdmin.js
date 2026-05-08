@@ -33,22 +33,25 @@ async function seed() {
     await mongoose.connect(uri);
     console.log('✅  Connected to MongoDB');
 
-    const existing = await User.findOne({ email: ADMIN_EMAIL });
-    if (existing) {
-        if (existing.role !== 'admin') {
-            existing.role = 'admin';
-            await existing.save();
-            console.log(`🔄  Upgraded existing user "${ADMIN_EMAIL}" to admin role.`);
-        } else {
-            console.log(`ℹ️   Admin account already exists: ${ADMIN_EMAIL}`);
-        }
-        await mongoose.disconnect();
-        return;
-    }
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, salt);
 
+    const existing = await User.findOne({ email: ADMIN_EMAIL });
+    if (existing) {
+        existing.role = 'admin';
+        existing.password = hashedPassword;
+        await existing.save();
+        console.log(`🔄  Updated existing user "${ADMIN_EMAIL}" to admin role and reset password.`);
+        console.log('');
+        console.log('✅  Admin account ready!');
+        console.log('─────────────────────────────────────');
+        console.log(`   Email    : ${ADMIN_EMAIL}`);
+        console.log(`   Password : ${ADMIN_PASSWORD}`);
+        console.log('─────────────────────────────────────');
+        console.log('');
+        await mongoose.disconnect();
+        return;
+    }
     await User.create({
         name:     ADMIN_NAME,
         email:    ADMIN_EMAIL,
